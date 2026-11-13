@@ -321,6 +321,12 @@ When conditional requests are on, the delivery endpoint adds `stale-while-revali
 the `ETag` or answers `304 Not Modified`. What it checks is up to you, and the demo has two checks to choose from: an
 accurate one after the query runs, and a fast one before.
 
+The plugin is a separate dependency, so add it to your project's `build.gradle` if it isn't there already:
+
+```groovy
+api 'com.psddev:conditional-request'
+```
+
 **Everything Rendered (Accurate)** runs in the rest of the endpoint's `finalizeResponse`, once the query has rendered
 everything:
 
