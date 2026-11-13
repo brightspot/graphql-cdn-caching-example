@@ -63,24 +63,13 @@ The CMS is at http://localhost/cms. Brightspot initializes on its first request,
 
 ## 2. Seed the content
 
-On its first request, Brightspot creates the `Example News` site at `http://example.localhost` and an API client for
-`ManagementApiEndpoint`, so there's nothing to set up in the CMS. The seed script uses that client to create a home
-page, sections, authors and articles through the management API, with permalinks on the site. It's safe to rerun.
+There's nothing to set up in the CMS first. The seed script creates a home page, sections, authors and articles through
+the management API, with permalinks on the `Example News` site. It's safe to rerun.
 
 ```sh
 cd fe
 yarn
 yarn seed
-```
-
-The client's ID and secret are fixed in `DemoBootstrapFilter` so the seed works with no setup, which means anyone who
-can reach the CMS can use them. Keep this to local demos.
-
-To seed with another API client, pass its credentials on the command line, or copy `.env.local.example` to
-`.env.local`, which git ignores, and fill them in there:
-
-```sh
-CMA_CLIENT_ID=... CMA_CLIENT_SECRET=... yarn seed
 ```
 
 ## 3. Run the front end
