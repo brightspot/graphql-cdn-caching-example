@@ -1,0 +1,62 @@
+version: '3.0'
+services:
+  mysql:
+    image: brightspot/mysql:mysql5.6
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - mysql-logs:/var/log/mysql
+  solr:
+    image: brightspot/solr:8
+    ports:
+      - 8180:8180
+    volumes:
+      - solr-data:/var/solr
+  tomcat:
+    image: brightspot/tomcat:9-jdk11
+    ports:
+      - 5005:5005
+    volumes:
+      - storage-data:/servers/tomcat/storage
+      - .:${PROJECT_DIRECTORY}:cached
+      # Override the following line in a git ignored docker-compose.override.yml with your local Brightspot directory.
+      #- <LOCAL BSP DIR>:${BRIGHTSPOT_DIRECTORY}:cached
+    environment:
+      - BRIGHTSPOT_PROJECT_DIRECTORY=/code
+      - CONTEXT_PROPERTIES=${PROJECT_DIRECTORY}/docker-context.properties
+      - MYSQL_DATABASE=brightspot
+      - ROOT_WAR=${PROJECT_DIRECTORY}/build/libs/graphql-cdn-caching-example-1.0.0-SNAPSHOT.war
+      - SOLR_URL=http://solr:8080/solr/collection1
+    depends_on:
+      - apache
+      - mysql
+      - solr
+  apache:
+    image: brightspot/apache:2-dims3
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - storage-data:/var/www/localhost/htdocs/storage
+  # Stands in for Cloudflare in front of the GraphQL API. See docker/varnish/default.vcl.
+  varnish:
+    image: varnish:7.6
+    ports:
+      - 8080:80
+    volumes:
+      - ./docker/varnish/default.vcl:/etc/varnish/default.vcl:ro
+    depends_on:
+      - tomcat
+  greenmail:
+    image: greenmail/standalone:1.5.14
+    ports:
+      - 3025:3025
+      - 3110:3110
+      - 3143:3143
+      - 3465:3465
+      - 3993:3993
+      - 3995:3995
+volumes:
+  mysql-data:
+  mysql-logs:
+  solr-data:
+  storage-data:

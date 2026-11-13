@@ -1,0 +1,7 @@
+#!/bin/bash
+
+set -e
+
+echo 'Removing existing Docker containers and volumes...'
+# --volumes only removes this project's volumes. `docker volume prune` would act on every project's volumes instead.
+docker compose down --volumes

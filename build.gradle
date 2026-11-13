@@ -1,0 +1,236 @@
+plugins {
+    id 'java-library'
+    id 'war'
+}
+
+description = 'Brightspot - GraphQL CDN Caching Example'
+
+def brightspotVersion = '4.8.23'
+
+def rootDir = rootProject.projectDir
+def solrjVersion = '8.6.1'
+def runtimeJavadocVersion = '0.12.0'
+
+group = 'com.brightspot.example'
+version = '1.0.0-SNAPSHOT'
+defaultTasks 'build'
+
+// Brightspot 4.8 publishes its libraries as requiring Java 11.
+allprojects {
+    tasks.withType(JavaCompile) {
+        options.release = 11
+    }
+
+    sourceCompatibility = '11'
+}
+
+dependencies {
+    implementation enforcedPlatform("com.psddev:brightspot-bom:$brightspotVersion")
+    implementation enforcedPlatform("com.psddev:brightspot-dependencies:$brightspotVersion")
+
+    annotationProcessor 'com.github.therapi:therapi-runtime-javadoc-scribe'
+
+    constraints {
+        annotationProcessor "com.github.therapi:therapi-runtime-javadoc-scribe:$runtimeJavadocVersion"
+        api("org.apache.solr:solr-solrj:$solrjVersion") {
+            force = true
+        }
+    }
+
+    implementation 'com.psddev:cms-tool-ui'
+    implementation 'org.apache.solr:solr-solrj'
+
+    api 'org.slf4j:slf4j-api'
+    api 'org.slf4j:slf4j-jdk14'
+
+    providedCompile 'javax.el:javax.el-api:3.0.0'
+    providedCompile 'javax.servlet:javax.servlet-api:3.1.0'
+    providedCompile 'javax.servlet.jsp:javax.servlet.jsp-api:2.3.3'
+
+    api 'com.psddev:analytics'
+    api 'com.psddev:cms-api'
+    api 'com.psddev:cms-db'
+    api 'com.psddev:cms-js'
+    api 'com.psddev:cms-type'
+    api 'com.psddev:cms-mark'
+    api 'com.psddev:conditional-request'
+    api 'com.psddev:conversation'
+    api 'com.psddev:dari-db'
+    api 'com.psddev:dari-mysql'
+    api 'com.psddev:dari-solr-v6'
+    api 'com.psddev:dari-util'
+    api 'com.psddev:dari-mark'
+    api 'com.psddev:graphql'
+    api 'com.psddev:handlebars'
+    api 'com.psddev:js'
+    api 'com.psddev:theme'
+    api 'com.psddev:timeseries'
+    api 'com.psddev:timeseries-mysql'
+}
+
+// OkHttp 5, pulled in by Brightspot 4.8's GraphQL plugin, publishes JVM and Android variants. Gradle 6 doesn't know the
+// attribute that tells them apart, so ask for the JVM one explicitly.
+configurations.all {
+    attributes {
+        attribute(Attribute.of('org.gradle.jvm.environment', String), 'standard-jvm')
+    }
+}
+
+configurations.testImplementation.setCanBeResolved(true)
+configurations.implementation.setCanBeResolved(true)
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven { url = 'https://artifactory.psdops.com/public' }
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+def styleguideBuildDir = "theme/styleguide"
+def viewClassesDir = "$buildDir/generated-sources/styleguide"
+
+sourceSets {
+    main {
+        java {
+            srcDir viewClassesDir
+            srcDir 'src/java'
+        }
+    }
+    test {
+        compileClasspath += configurations.compileOnly
+        runtimeClasspath += configurations.compileOnly
+    }
+}
+
+configurations {
+    enhanceClassesRuntime
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+    options.warnings = false
+}
+
+def mainSourceSet = sourceSets.main
+def mainOutput = mainSourceSet.output
+def enhancedClassesDir = "$buildDir/enhanced-classes"
+
+//task generateViewClasses(type: JavaExec) {
+//    inputs.dir styleguideBuildDir
+//    outputs.dir viewClassesDir
+//    outputs.cacheIf { true }
+//
+//    classpath += sourceSets.main.compileClasspath
+//    main = 'com.psddev.styleguide.codegen.ViewClassGenerator'
+//    args = ["--json-dir=$styleguideBuildDir", "--build-dir=$viewClassesDir"]
+//}
+
+task sourceJar(type: Jar, dependsOn: classes) {
+    classifier 'sources'
+    from sourceSets.main.allSource
+}
+
+project.afterEvaluate {
+    //compileJava.dependsOn(generateViewClasses)
+}
+
+task prepEnhanceClasses() {
+    doFirst {
+        mainOutput.classesDirs.forEach { mkdir it.path }
+    }
+}
+
+task enhanceClasses(type: JavaExec) {
+    dependsOn('prepEnhanceClasses')
+    dependsOn('classes')
+    delete enhancedClassesDir
+    mainOutput.classesDirs.forEach { inputs.dir(it) }
+    outputs.dir(enhancedClassesDir)
+    outputs.cacheIf { false }
+    outputs.upToDateWhen { false }
+
+    onlyIf {
+        configurations.implementation.files.find { it.name.contains('dari-db') }
+    }
+
+    classpath(
+        configurations.enhanceClassesRuntime,
+        mainSourceSet.compileClasspath,
+        mainSourceSet.runtimeClasspath
+    )
+
+    main = 'com.psddev.dari.util.ClassEnhancer$Static'
+
+    args = mainOutput.classesDirs + [
+        '-c',
+        'com.psddev.dari.db.LazyLoadEnhancer',
+        'com.psddev.dari.db.QueryCommentEnhancer',
+        '-o',
+        enhancedClassesDir
+    ]
+}
+
+task generateBuildProperties(type: WriteProperties) {
+    outputFile = file "$buildDir/build.properties"
+
+    def mainDir = rootDir.toPath()
+        .relativize(projectDir.toPath())
+        .toString()
+        .replace(File.separatorChar, '/' as char) + '/src/main'
+
+    properties(
+        'name': { project.description },
+        'version': { project.version },
+        'release': rootProject.version,
+        'projectId': rootProject.name,
+        'projectDirectory': rootDir,
+        'javaSourceDirectory': "$mainDir/java",
+        'resourceDirectory': "$mainDir/resources",
+        'webappSourceDirectory': "$mainDir/webapp"
+    )
+}
+
+jar {
+    dependsOn enhanceClasses
+    dependsOn generateBuildProperties
+
+    compileJava.source sourceSets.main.java
+
+    from enhancedClassesDir
+    from generateBuildProperties.outputFile
+
+    manifest {
+        attributes(
+            'Dari-ClassFinder-Include': 'true'
+        )
+    }
+}
+
+gradle.taskGraph.whenReady {
+    if (configurations.implementation.files.find { it.name.contains('dari-db') }) {
+        mainOutput.classesDirs.forEach {
+            def p = it.path + '/'
+            jar.exclude { it.file.path.startsWith(p) && it.file.path.endsWith('.class') }
+        }
+
+    } else {
+        enhanceClasses.enabled = false
+    }
+}
+
+def jarSuffix = "-${project.version}.jar"
+def jarSuffixLength = jarSuffix.length()
+
+war {
+    dependsOn generateBuildProperties
+
+    from ({ zipTree(file(configurations.compileClasspath.find { it.name.startsWith('cms-tool-ui') })) }) { into('cms') }
+    from(generateBuildProperties.outputFile) { into 'WEB-INF/classes' }
+
+    rootSpec.rename({
+        it.endsWith(jarSuffix) ? "${it.substring(0, it.length() - jarSuffixLength)}.jar" : it
+    })
+}
